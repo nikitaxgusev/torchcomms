@@ -296,7 +296,10 @@ c10::intrusive_ptr<TorchWork> TorchCommRCCLX::reconfigure(
     nccl_comm_ = nullptr;
   }
 
-  if (!nccl_comm_) {
+  auto growRankIt = opts.hints.find("grow_rank");
+  bool isNewRankJoining = !nccl_comm_ && growRankIt != opts.hints.end();
+
+  if (!nccl_comm_ && !isNewRankJoining) {
     comm_state_ = CommState::NORMAL;
     shutdown_ = false;
 
@@ -309,6 +312,13 @@ c10::intrusive_ptr<TorchWork> TorchCommRCCLX::reconfigure(
         fmt::format("{}/reconfigure/{}", name_, opts.uuid));
 
     initRcclxResources();
+  } else if (isNewRankJoining) {
+    comm_state_ = CommState::NORMAL;
+    shutdown_ = false;
+    (void)growRankIt;
+    TC_LOG(WARNING, this)
+        << "ncclCommGrow is not implemented in RCCLX backend yet; "
+        << "isNewRankJoining branch is a no-op during reconfigure";
   } else {
     if (timeout_thread_.joinable()) {
       shutdown_ = true;
@@ -349,8 +359,10 @@ c10::intrusive_ptr<TorchWork> TorchCommRCCLX::reconfigure(
               NCCL_SHRINK_ABORT),
           "RCCLX commShrink failed during reconfigure");
     } else {
-      throw std::runtime_error(
-          "TorchCommRCCLX reconfigure: grow path is not supported");
+      TC_LOG(WARNING, this)
+          << "ncclCommGrow is not implemented in RCCLX backend yet; "
+          << "grow path (new_size > comm_size_) is a no-op during reconfigure";
+      new_comm = nccl_comm_;
     }
 
     nccl_comm_ = new_comm;
