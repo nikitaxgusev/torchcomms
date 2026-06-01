@@ -18,24 +18,21 @@ message(STATUS "RCCLX_SHARED_LIB is set to ${RCCLX_SHARED_LIB}")
 # these are only declared by the rcclx-dev variant of <rccl.h>. The stub TU
 # (RcclxApiShardedRelayStub.cpp) provides ncclInternalError fallbacks for the
 # frozen rcclx-stable / rcclx-last-stable / rccl-dev snapshots. BUCK picks
-# exactly one of the two via select() on the active rccl constraint; mirror
-# that here by probing <rccl.h> for ncclx::pFree and dropping the TU that
-# can't compile against the active headers.
-include(CheckCXXSourceCompiles)
-set(CMAKE_REQUIRED_INCLUDES "${RCCLX_INCLUDE}")
-check_cxx_source_compiles("
-    #include <rccl.h>
-    int main() { (void)&ncclx::pFree; return 0; }
-" TORCHCOMMS_HAS_RCCLX_DEV_API)
-unset(CMAKE_REQUIRED_INCLUDES)
-
-if(TORCHCOMMS_HAS_RCCLX_DEV_API)
-    message(STATUS "rcclx-dev API detected, linking RcclxApiShardedRelay.cpp")
+# exactly one of the two via select() on the active rccl_constraint; mirror
+# that here by detecting the rcclx-dev variant via a marker header it
+# installs (nccl_device/core.h, the same marker the NCCLX extension already
+# uses to gate its dev-only sources). rcclx-dev ships both the nccl_device/*
+# headers and the inline ncclx::* declarations in rccl.h together, so the
+# marker also gates the sharded-relay symbols correctly.
+if(EXISTS "${RCCLX_INCLUDE}/nccl_device/core.h")
+    message(STATUS
+        "rcclx-dev API headers found, linking RcclxApiShardedRelay.cpp")
     list(FILTER TORCHCOMMS_RCCLX_SOURCES
         EXCLUDE REGEX "RcclxApiShardedRelayStub\\.cpp$")
 else()
     message(STATUS
-        "rcclx-dev API NOT detected, linking RcclxApiShardedRelayStub.cpp")
+        "rcclx-dev API headers NOT found,"
+        " linking RcclxApiShardedRelayStub.cpp")
     list(FILTER TORCHCOMMS_RCCLX_SOURCES
         EXCLUDE REGEX "RcclxApiShardedRelay\\.cpp$")
 endif()
